@@ -1,11 +1,12 @@
 import copy
+from environment import CliffWalking
 
 class PolicyIteration:
-
     def __init__(self, env, theta, gamma):
 
         self.env = env
 
+        # V(s)
         self.v = [0] * self.env.ncol * self.env.nrow
 
         self.pi = [[0.25, 0.25, 0.25, 0.25] for i in range(self.env.ncol * self.env.nrow)]
@@ -18,6 +19,7 @@ class PolicyIteration:
         计算 Q(s,a)
         """
         qsa = 0
+        # 终点 done = 1, 不计算 V, 只需要加上 r 就好
         for p, next_state, r, done in self.env.P[state][action]:
             qsa += p * (r + self.gamma * self.v[next_state] * (1 - done))
         return qsa
@@ -34,11 +36,11 @@ class PolicyIteration:
             new_v = [0] * self.env.ncol * self.env.nrow
             
             for state in range(self.env.ncol * self.env.nrow):
-                # 存储所有的 Q(s,a)
+                # 存储四个动作的 Q(s,a), 准确来说是 Q(s,a) × \pi(s,a)
                 qsa_list = []
                 # 四个动作
                 for action in range(4):
-                    qsa_list.append(self.pi[state][action] * self.compute_qsa(state, action))
+                    qsa_list.append(self.pi[state][action] * self.compute_qsa(state, action)) # Q(s,a) × \pi(s,a)
                 
                 # 计算 V(s)
                 new_v[state] = sum(qsa_list)
@@ -83,3 +85,38 @@ class PolicyIteration:
 
             # 旧的策略等于新的策略的时候，停止迭代
             if old_pi == new_pi: break
+
+
+def print_agent(agent, action_meaning, disaster=[], end=[]):
+    print("状态价值：")
+    for i in range(agent.env.nrow):
+        for j in range(agent.env.ncol):
+            print('%6.6s' % ('%.3f' % agent.v[i * agent.env.ncol + j]),
+                  end=' ')
+        print()
+
+    print("策略：")
+    for i in range(agent.env.nrow):
+        for j in range(agent.env.ncol):
+            # 一些特殊的状态,如悬崖
+            if (i * agent.env.ncol + j) in disaster:
+                print('****', end=' ')
+            elif (i * agent.env.ncol + j) in end:  # 目标状态
+                print('EEEE', end=' ')
+            else:
+                a = agent.pi[i * agent.env.ncol + j]
+                pi_str = ''
+                for k in range(len(action_meaning)):
+                    pi_str += action_meaning[k] if a[k] > 0 else 'o'
+                print(pi_str, end=' ')
+        print()
+
+if __name__ == "__main__":
+    env = CliffWalking()
+    action_meaning = ['^', 'v', '<', '>']
+    theta = 0.001
+    gamma = 0.9
+    agent = PolicyIteration(env, theta, gamma)
+    agent.policy_iter()
+
+    print_agent(agent, action_meaning, list(range(37, 47)), [47])

@@ -1208,9 +1208,38 @@ $$
 
 
 
+### 3.2 价值迭代
+
+在价值迭代中，不存在显示的策略，只是维护一个状态价值函数
+$$
+V^*(s) = \max_{a \in \mathcal{A}} \left\{ r(s, a) + \gamma \sum_{s' \in \mathcal{S}} P(s' \mid s, a) V^*(s') \right\}
+$$
+其中：
+
+$V^*(s)$：表示状态 $s$ 的最优价值
+
+$P(s'\mid s,a)$：在状态 $s$ 采取动作 $a$ 转移到状态 $s'$ 的概率
+
+这个公式的意思是：
+
+**状态** $s$ **的最优价值等于在所有可能动作  $a$ 中，选择能够最大化未来收益的动作对应的期望回报。**
+
+![截屏2025-01-30 23.11.32](/Users/n/Library/Application Support/typora-user-images/截屏2025-01-30 23.11.32.png)
 
 
 
+价值迭代的核心思想是：
 
+1.**初始化**：所有状态的价值设为 0（或者任意值）。
 
+2.**更新状态价值**：使用 **贝尔曼方程** 迭代更新：
+$$
+V(s) \leftarrow \max_a \sum_{s{\prime}} P(s{\prime} | s, a) \left[ R(s, a) + \gamma V(s{\prime}) \right]
+$$
+3.**检查收敛**：如果所有状态的价值变化（误差）小于某个阈值 ，则停止迭代。
 
+4.**提取最优策略**：根据最终的价值函数确定最优策略：
+$$
+\pi^*(s) = \arg\max_a \sum_{s{\prime}} P(s{\prime} | s, a) \left[ R(s, a) + \gamma V(s{\prime}) \right]
+$$
+每个状态 $s$ 选择能够最大化回报的动作 $a$
