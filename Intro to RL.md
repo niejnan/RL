@@ -1210,6 +1210,8 @@ $$
 
 ### 3.2 价值迭代
 
+#### 3.2.1 价值迭代
+
 在价值迭代中，不存在显示的策略，只是维护一个状态价值函数
 $$
 V^*(s) = \max_{a \in \mathcal{A}} \left\{ r(s, a) + \gamma \sum_{s' \in \mathcal{S}} P(s' \mid s, a) V^*(s') \right\}
@@ -1243,3 +1245,85 @@ $$
 \pi^*(s) = \arg\max_a \sum_{s{\prime}} P(s{\prime} | s, a) \left[ R(s, a) + \gamma V(s{\prime}) \right]
 $$
 每个状态 $s$ 选择能够最大化回报的动作 $a$
+
+
+
+#### 3.2.2 价值迭代和策略迭代的区别
+
+
+
+**策略迭代**
+
+核心思想：交替进行策略评估 和 策略提升，知道策略收敛
+
+策略评估：计算当前策略下的状态价值函数 $V(s)$ ，直到收敛
+
+策略提升：根据 $V(s)$ 选择新的最优策略 $\pi(s)$
+
+收敛方式：反复执行评估和提升，知道策略不变
+
+> 对于策略迭代，先用 policy_eval 计算当前策略的价值函数 $V(s)$
+>
+> 再用policy_improvement 更新策略 $\pi(s)$​，直到策略不再变化
+
+```python
+def policy_iteration(self):
+    while True:
+        self.policy_evaluation()  # 评估当前策略
+        old_pi = copy.deepcopy(self.pi)  # 备份旧策略
+        new_pi = self.policy_improvement()  # 提升策略
+        if old_pi == new_pi:  # 策略不变，收敛
+            break
+```
+
+**策略迭代类似于，先玩一段时间(策略评估)，再总结出更好的策略(策略提升)**
+
+
+
+**价值迭代**
+
+核心思想：直接迭代贝尔曼最优方程，不断逼近最优价值
+
+策略评估：不完全进行策略评估，而是 只进行一次贝尔曼更新
+
+策略提升：通过贝尔曼最优方程隐式地进行策略提升
+
+收敛方式：只更新价值函数，直到价值收敛，最后一次性提取最优策略
+
+> 直接更新状态价值 $V(s)$，使用 max 选择最优动作
+>
+> 价值收敛后，再用 get_policy 提取最终策略
+
+```python
+def value_iteration(self):
+    while True:
+        max_diff = 0
+        new_v = [0] * self.env.ncol * self.env.nrow
+        for state in range(self.env.ncol * self.env.nrow):
+            qsa_list = []
+            for action in range(4):  # 遍历所有动作
+                qsa_list.append(self.compute_qsa(state, action))
+            new_v[state] = max(qsa_list)  # 直接选择最大 Q(s, a)
+            max_diff = max(max_diff, abs(new_v[state] - self.v[state]))
+        self.v = new_v
+        if max_diff < self.theta:  # 价值收敛
+            break
+    self.get_policy()  # 最后提取策略
+```
+
+**价值迭代类似于，每次问自己下一个最佳的决策是什么，从而收敛到最优解**
+
+
+
+若状态空间比较小，策略迭代更合适
+
+若状态空间很大，价值迭代更合适，避免了不必要的策略评估
+
+
+
+
+
+
+
+
+
