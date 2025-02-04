@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 
 class BernoulliBandit:
 
@@ -13,7 +12,7 @@ class BernoulliBandit:
         self.k = k
 
     def step(self, k):
-        if np.random.rand() < self.probs[k]:
+        if np.random.rand() < self.probs[k]: 
             return 1
         else:
             return 0
