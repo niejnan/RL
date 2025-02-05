@@ -1,6 +1,6 @@
-## Intro to RL
+## Chap1.RL基础
 
-### Lecture 1:Overview(课程概括与 RL 基础)
+
 
 ![截屏2025-01-25 15.55.00](/Users/n/Library/Application Support/typora-user-images/截屏2025-01-25 15.55.00.png)
 
@@ -357,7 +357,7 @@ $$
 
 
 
-## Lecture 2：马尔可夫决策过程
+## Chap3.马尔可夫决策过程
 
 agent 得到环境的状态后，它会采取动作，并把这个采取的动作返还给环境。环境得到智能体的动作后，它会进入下一个状态，把下一个状态传给智能体。在 RL 中，agent 与环境就是这样进行交互的，这个交互过程可以通过马尔可夫决策过程来表示。
 
@@ -1405,7 +1405,7 @@ DP 只是在已知的状态转移模型下计算价值，**不会主动探索环
 
 
 
-## Chap5.时序差分
+## Chap5.时序差分算法
 
 不直到环境的奖励函数和状态转移函数，需要直接使用和环境交互的过程中采样到的数据进行学习的情况下，不能用 DP。
 
@@ -1460,9 +1460,9 @@ TD 学习的核心：基于当前的经验和已有的估计进行自我更新�
 
 #### 5.1.2 Sarsa 更新公式的推导
 
-可以用TD 算法来进行策略提升，在不知道奖励函数和状态转移函数的情况下。
+可以用 TD 算法来进行策略提升，在不知道奖励函数和状态转移函数的情况下。
 
-Sarsa(State-Action-Reward-State-Action)
+**Sarsa(State-Action-Reward-State-Action)**
 
 
 $$
@@ -1534,6 +1534,353 @@ $$
 **Sarsa 具体算法如下：**
 
 ![截屏2025-02-04 00.39.29](/Users/n/Library/Application Support/typora-user-images/截屏2025-02-04 00.39.29.png)
+
+
+
+### 5.3 Q-table
+
+用 Q-table 记录每个 (s,a) 的预期回报。
+
+Q-table 的行数等于状态空间的大小，列数等于动作空间的大小。
+
+在 Sarsa 中，agent 根据当前的 Q 表，选择下一个动作，
+
+
+
+**Q-table 的缺点：**
+
+1. 空间和时间复杂度：当状态空间或动作空间很大的时候，Q-table 的维度很大
+2. 难以处理连续状态和动作：Q-table 主要还是用在离散的状态和动作空间，例如代码中的悬崖环境，状态 $s$ 有限，动作 $a$ 也只有上下左右四个。
+
+
+
+### 5.4 nstep-Sarsa 算法
+
+
+
+TD 用 **一步预测** 来估算回报，利用 及时奖励 和下一个状态的价值估计来更新当前状态的价值
+$$
+V(s_t) \leftarrow V(s_t) + \alpha \left( r_{t+1} + \gamma V(s_{t+1}) - V(s_t) \right)
+$$
+
+1. TD 只关注 当前 和下一个状态的价值估计，只需要一步的信息，方差比较小(相对于蒙特卡洛)
+
+2. 但是 TD 是有偏的，TD 并不像蒙特卡罗通过完整的回报来计算，并不是直接观测到的实际值
+
+
+
+MC 依赖于 完整的状态信息，在回合结束的时候才计算累积的回报
+
+1. MC 使用的是实际的回报，MC 是无偏的
+2. 但是 MC 的方差大，毕竟一整个回合中每一步的奖励都是不确定的，最后还要加起来，所以最终的估计受随机因为的影响比较大，简单来说就是方差大，可能导致学习过程不稳定。
+
+
+
+MC 的优势 + TD 的优势 = **nstep-Sarsa**
+
+多步时序差分就是使用 $n$ 步的奖励，然后使用之后状态的价值估计
+$$
+G_t = r_t + \gamma r_{t+1}+\cdots+\gamma^nQ(s_{t+n},a_{t+n})
+$$
+对于多步 Sarsa 的更新公式，从
+$$
+Q(s_t, a_t) \leftarrow Q(s_t, a_t) + \alpha [r_t + \gamma Q(s_{t+1}, a_{t+1}) - Q(s_t, a_t)]
+$$
+变成了：
+$$
+Q(s_t, a_t) \leftarrow Q(s_t, a_t) + \alpha [r_t + \gamma r_{t+1} + \cdots + \gamma^n Q(s_{t+n}, a_{t+n}) - Q(s_t, a_t)]
+$$
+
+```python
+# n-step 的实现多一些这个部分
+
+self.state_list = []  # 保存之前的状态
+self.action_list = []  # 保存之前的动作
+self.reward_list = []  # 保存之前的奖励
+
+if len(r_list) < n:
+  	不足 n 的处理逻辑
+
+for _ in reversed(range(n)):
+  	从后往前算, 后面的部分先乘 gamma
+    递归更新
+```
+
+
+
+### 5.5 Q-learning
+
+
+
+#### 5.5.1 Q-learning 更新公式推导
+
+Q 函数的贝尔曼方程：
+$$
+Q(s_t, a_t) = \mathbb{E}[r_{t+1} + \gamma \max_{a{\prime}} Q(s_{t+1}, a{\prime})]
+$$
+通过交互，得到 $r_{t+1}$，$s_{t+1}$
+$$
+Q(s_t, a_t) = r_{t+1} + \gamma \max_{a{\prime}} Q(s_{t+1}, a{\prime})
+$$
+定义 误差 $\delta$
+$$
+\delta_t = r_{t+1} + \gamma \max_{a{\prime}} Q(s_{t+1}, a{\prime}) - Q(s_t, a_t)
+$$
+
+$$
+Q(s_t, a_t) \leftarrow Q(s_t, a_t) + \alpha \delta_t
+$$
+
+即：
+$$
+Q(s_t, a_t) \leftarrow Q(s_t, a_t) + \alpha \left[ r_{t+1} + \gamma \max_{a{\prime}} Q(s_{t+1}, a{\prime}) - Q(s_t, a_t) \right]
+
+$$
+
+
+对比 Sarsa 的更新公式：
+$$
+Q(s_t, a_t) \leftarrow Q(s_t, a_t) + \alpha \left[ r_{t+1} + \gamma Q(s_{t+1}, a_{t+1}) - Q(s_t, a_t) \right]
+$$
+
+
+二者的差别在于，Q-learning 用的是下一个状态的最大 Q 值，而 SARSA 使用的是实际执行的下一个动作的 Q 值
+
+
+
+#### 5.5.2 Q-learning 算法
+
+![截屏2025-02-05 00.07.51](/Users/n/Library/Application Support/typora-user-images/截屏2025-02-05 00.07.51.png)
+
+
+
+Q 函数的贝尔曼最优方程为：
+$$
+Q^*(s, a) = r(s, a) + \gamma \sum_{s' \in S} P(s' | s, a) \max_{a'} Q^*(s', a')
+$$
+为了探索，通常会使用一个 $\epsilon$​-贪婪策略来与环境交互。
+
+
+
+#### 5.5.3 On-policy 和 Off-policy 的区别
+
+对于 Sarsa 会在每个时间步，根据当前的策略来选择动作。
+
+即：agent 所执行的动作必须遵循当前策略，无论是探索还是基于 Q-table 选择最优的动作(利用)。
+$$
+Q(s_t, a_t) \leftarrow Q(s_t, a_t) + \alpha \left[ r_{t+1} + \gamma Q(s_{t+1}, a_{t+1}) - Q(s_t, a_t) \right]
+$$
+Sarsa 使用的是当前策略下实际执行的下一个动作 $a_{t+1}$
+
+即：在更新 Q 值的时候，当前状态下采取的动作和下一个状态实际所执行的动作都是基于当前策略采样的。
+
+在这个公式中，下一步的动作$ a_{t+1} $​必须是当前策略下选择的动作（而不是最大 Q 值对应的动作）。
+
+因此，**SARSA 是在策略方法（on-policy）**，它的学习是基于当前策略的表现。
+
+
+
+**Q-learning 是 off-policy 算法**，意味着它不需要使用当前策略来采样数据。
+
+它可以基于与当前策略不同的行为策略（例如使用 $\epsilon$-贪婪）来更新 Q 值。
+
+更新时，它使用的并不是当前策略下实际选择的动作，而是选择下一个状态的 **最优动作** 来进行 Q 值的更新。
+
+**说的简单点：Q-learning 不关心当前策略，而是学习最优策略。通过最大化未来的 Q 值来更新当前的 Q 值。**
+
+
+
+采样数据的策略叫做 行为策略(behavior policy)
+
+这些数据用来更新的策略叫做 目标策略 (target policy)
+
+
+
+- 对于 on-policy ，行为策略和目标策略是同一个策略
+
+- 对于 off-policy，行为策略和目标策略不是同一个策略
+
+两者的判断区别在于，看计算时序差分的价值目标的数据是否来源于当前的策略。
+
+具体来说：
+
+- 对于 Sarsa，更新公式必须使用来自当前策略采样到的五元组 $(s,a,r,s',a)$，属于 on-policy
+- 对于 Q-learning，更新公式使用的是四元组 $(s,a,r,s')$ 来更新当前的价值 $Q(s,a)$ ，这个四元组并不需要一定是当前策略采样到的数据，也可以来自行为策略。
+
+对于 off-policy，能够重复利用过去的训练样本，往往具有更小的样本复杂度。
+
+
+
+### 5.6 Sarsa 与 Q-learning 对比
+
+![截屏2025-02-05 01.25.53](/Users/n/Library/Application Support/typora-user-images/截屏2025-02-05 01.25.53.png)
+
+
+
+对于 Q-learning 来说，有一点很重要的是，Q-learning 更加的冒险。
+
+这是因为 Q-learning 总是选择理论上最优的动作，即使可能掉悬崖
+
+从长期汇报来看，这条路经更短，回报更高，但是算法在探索，所以 agent 偶尔会选择调入悬崖的动作。
+
+这种 冒险的行为，也会导致训练过程中，Q-leaning 的 return 波动比较大，因为会掉悬崖 -100
+
+总的来说：
+
+- 波动较大，偶尔因为掉入悬崖导致突发性的巨大负奖励
+
+- 长期来看，学到的策略可能更接近理论最优，贴着悬崖走，快速到终点
+- Q-learning 理论上更优，但存在探索的高风险
+
+
+
+![截屏2025-02-05 01.24.54](/Users/n/Library/Application Support/typora-user-images/截屏2025-02-05 01.24.54.png)
+
+Sarsa 更新依赖于 agent 实际的动作，这意味着 倾向于学习如何避免危险的探索。
+
+在悬崖边的时候，Sarsa 更倾向于选择远离悬崖的路径，即使这条路径长一些，即使回报没有理论上最优的路径高
+
+训练过程中更稳定，智能体不太可能掉入悬崖，导致回报曲线更加平滑。
+
+- 更平稳、期望回报更高，尤其是在训练早期。
+
+- 策略更保守，优先考虑安全性，避免不必要的风险。
+- Sarsa 更稳定，适合需要平衡探索和安全性的情况
+
+
+
+## Chap6.Dyna-Q 算法
+
+Dyna-Q 同动态规划算法中的策略迭代和价值迭代一样都是 model-based 的算法。
+
+不同点在于 Dyna-Q 的环境模型是通过采样数据估计得到的。
+
+
+
+### 6.1 Dyna-Q
+
+DynaQ 的核心思想是：
+
+**在使用真实环境数据进行学习的同时，利用已构建的环境模型进行额外的“虚拟”学习，以提高学习效率。**
+
+Dyna-Q 将强化学习分为三个主要步骤：
+
+
+
+1. 真实环境交互
+
+   - agent 与 真实环境交互，获得新的经验数据：$(s,a,r,s')$
+
+   - 使用q_learning 进行常规的 Q 值更新：
+
+   $$
+   Q(s, a) \leftarrow Q(s, a) + \alpha \left( r + \gamma \max_{a{\prime}} Q(s{\prime}, a{\prime}) - Q(s, a) \right)
+   $$
+
+2. 环境模型学习
+
+   - agent 会讲获得的经验，存储到模型中，通常是 $Model(s,a) \rightarrow (r,s')$
+   - 这意味着模型可以预测 **给定状态和动作下** 的奖励 和 下一个状态
+
+3. 基于模型的规划
+
+   - 从已经存储的模型中 **随机采样历史经验**，模拟和环境的交互，进行额外的 Q 值更新。
+   - 就好像是 agent 在脑子里 想象学习，不需要再与真实环境交互。
+
+
+
+![截屏2025-02-05 13.53.27](/Users/n/Library/Application Support/typora-user-images/截屏2025-02-05 13.53.27.png)
+
+
+
+```python
+初始化 Q(s, a) 和 Model(s, a)
+
+for each episode:
+    初始化状态 s
+    while s 不是终止状态:
+        1. 选择动作 a（如 ε-贪心策略）
+        2. 执行动作 a，观察奖励 r 和下一个状态 s'
+        3. Q-learning 更新：
+           Q(s, a) ← Q(s, a) + α [r + γ max(Q(s', a')) - Q(s, a)]
+        4. 更新：
+           Model(s, a) ← (r, s')
+        5. 进行 n 次基于模型的规划更新：
+            for i in range(n):
+                随机从模型中采样 (s_sample, a_sample)
+                (r_sample, s'_sample) = Model(s_sample, a_sample)
+                Q(s_sample, a_sample) ← Q(s_sample, a_sample) + α [r_sample + γ max(Q(s'_sample, a')) - Q(s_sample, a_sample)]
+        6. 更新当前状态：
+           s ← s'
+```
+
+
+
+
+
+### 6.2 总结
+
+每次进行一次 Q-learning 后，Dyna-Q 会做 $n$ 次 Q-planing
+
+要强调的是，Dyna-Q 是结合了 model-free 和 model-based 的思想，适用于 **离散且确定性的环境**
+
+- 状态空间 和 动作空间有限，可以列出所有可能的状态和动作
+- 且 相同的状态和动作组合总是产生相同的结果
+
+
+
+由于环境是 **确定性** 的，意味着：
+
+- **相同的** (s, a) **永远会产生相同的** $(r, s{\prime})$，不需要额外的统计或估计
+  - 因此，可以立即更新模型，将这条经验直接存储：
+
+$$
+\text{Model}(s, a) \leftarrow (r, s{\prime})
+$$
+
+这表明：模型已经 **“学会”了** 在状态 s 下采取动作 a 会发生什么。
+
+在确定性的环境中，模型只需要看到一次经验就能 **记住** 这个规律
+
+
+
+与之相对的是随机环境，相同的动作可能产生不同的结果，有概率分布
+
+且需要多条经验估计 转移概率和期望奖励，才能构建准确的模型环境
+
+
+
+对于悬崖漫步这个环境中，状态的转移是完全确定的，构建的环境模型的精度最高，所以 当 $n$ 越大，Dyna-Q 收敛的也越快，但在其他环境中，并不一定是这样的。
+
+对于确定的环境，可以通过增加 $n$ 来降低算法的样本复杂度
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
