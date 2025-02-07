@@ -70,7 +70,9 @@ def main(lr, num_episodes, hidden_dim, gamma, epsilon, target_update_freq, buffe
                     action = agent.take_action(state)
 
                     # 采取动作后 返回 下一个状态、奖励、是否结束的标志
-                    next_state, reward, done, _, __ = env.step(action)
+                    next_state, reward, done, truncated, _ = env.step(action)
+
+                    done = done or truncated
 
                     # 将五元组 (state, action, reward, next_state, done) 加入 buffer
                     push_tuple = (state, action, reward, next_state, done)

@@ -2013,23 +2013,175 @@ $$
 
 
 
+## Chap9.策略梯度
+
+ DQN 和 Q-learning 都是 value-based 的方法，核心思想是：
+
+1. 学习一个值函数
+
+$$
+Q(s, a) \leftarrow Q(s, a) + \alpha \left[ r + \gamma \max_{a{\prime}} Q(s{\prime}, a{\prime}) - Q(s, a) \right]
+$$
+
+2. 根据值函数导出策略，基于 $Q(s,a)$ 选择最优动作
+
+$$
+\pi(s) = \arg\max_a Q(s, a)
+$$
 
 
 
+Policy-base 的核心思想是：
+
+1. 直接学习一个策略 $\pi_{\theta}(s, a)$，即 **显式地 **表示从状态 s 选择动作 a 的概率
+2. 不依赖于 值函数，直接优化策略 $\pi_{\theta}$ 使得累积 rewards 最大
+
+$$
+J(\theta) = \mathbb{E}{\tau \sim \pi{\theta}} \left[ \sum_{t=0}^{T} R_t \right]
+$$
+
+适合连续状态空间，可以探索更加复杂的策略，而不仅仅是选择 $Q$​ 值最大的动作。
+
+Policy-based 方法中，直接学习一个策略函数 $\pi_{\theta}(a \mid s)$。
+
+为了能够优化，需要用参数化的模型，比如 nn 来表示策略
+$$
+\theta \leftarrow \theta + \alpha \nabla_{\theta} J(\theta)
+$$
+
+
+### 9.1 策略梯度的推导
+
+目标是找到最优策略 $\pi_{\theta}$，使得期望累积奖励最大
+$$
+J(\theta) = \mathbb{E}{\tau \sim \pi{\theta}} \left[ \sum_{t=0}^{T} R_t \right]
+$$
+其中，$ \tau = (s_0, a_0, s_1, a_1, …, s_T, a_T) $ 是一条完整的轨迹，$	 \mathbb{E}{\tau \sim \pi{\theta}} $ 表示轨迹 $\tau$ 按照策略 $\pi_{\theta}$ 采样的期望。
+
+对参数 $\theta$ 计算梯度：
+$$
+\nabla_{\theta} J(\theta) = \nabla_{\theta} \mathbb{E}{\tau \sim \pi{\theta}} \left[ \sum_{t=0}^{T} R_t \right]
+$$
+**轨迹** $\tau$ **的分布** $P_{\theta}(\tau) $ 依赖于策略 $\pi_{\theta}$ **，所以不能直接求导！**
 
 
 
+利用概率分布的期望梯度公式：
+$$
+\nabla_{\theta} \mathbb{E}{X}[f(X)] = \mathbb{E}{X} [\nabla_{\theta} f(X)]
+$$
+
+$$
+\nabla_{\theta} J(\theta) = \mathbb{E}{\tau \sim \pi{\theta}} \left[ \nabla_{\theta} \sum_{t=0}^{T} R_t \right]
+$$
+
+**奖励** $R_t$ **并不依赖于** $\theta$ ，它是环境给出的反馈，和策略的参数 $\theta$ 没有直接关系。
 
 
 
+在概率分布  $P_{\theta}(X)$  下，期望值的梯度有一个常见技巧：
+$$
+\nabla_{\theta} \mathbb{E}{X \sim P{\theta}}[f(X)] = \mathbb{E}{X \sim P{\theta}}[\nabla_{\theta} f(X)]
+$$
+如果  $f(X)$  不直接依赖于  $\theta$ ，但  $X$  是从依赖于  $\theta$  的分布 $ P_{\theta}(X) $ 采样，那么：
+$$
+\nabla_{\theta} \mathbb{E}{X \sim P{\theta}} [f(X)] = \mathbb{E}{X \sim P{\theta}} [ f(X) \nabla_{\theta} \log P_{\theta}(X) ]
+$$
+这个式子是**对数导数技巧**
 
 
 
+**应用到策略梯度：**
+$$
+\nabla_{\theta} J(\theta) = \mathbb{E}{\tau \sim \pi{\theta}} \left[ \sum_{t=0}^{T} R_t \nabla_{\theta} \log P_{\theta}(\tau) \right]
+$$
+其中：$P_{\theta}(\tau)$ **是轨迹的概率**，它由策略 $\pi_{\theta}$ 和环境动态 $P(s{\prime}|s,a)$ 决定：
+$$
+P_{\theta}(\tau) = p(s_0) \prod_{t=0}^{T} \pi_{\theta}(a_t | s_t) P(s_{t+1} | s_t, a_t)
+$$
+
+-  $\pi_{\theta}(a_t | s_t)$ **依赖于** $\theta$ 
+- $P(s_{t+1} | s_t, a_t)$ **由环境决定，不依赖** $\theta$ 
+
+对轨迹概率 $P_{\theta}(\tau)$ 取对数：
+$$
+\log P_{\theta}(\tau) = \sum_{t=0}^{T} \log \pi_{\theta}(a_t | s_t) + \sum_{t=0}^{T} \log P(s_{t+1} | s_t, a_t)
+$$
+由于环境转移概率 $P(s_{t+1}\mid s_t,a_t)$ 不依赖于 $\theta$ 梯度为0，则有
+$$
+\nabla_{\theta} \log P_{\theta}(\tau) = \sum_{t=0}^{T} \nabla_{\theta} \log \pi_{\theta}(a_t | s_t)
+$$
+代回策略梯度公式：
+$$
+\nabla_{\theta} J(\theta) = \mathbb{E}{\tau \sim \pi{\theta}} \left[ \sum_{t=0}^{T} R_t \sum_{t=0}^{T} \nabla_{\theta} \log \pi_{\theta}(a_t | s_t) \right]
+$$
+交换求和顺序：
+$$
+\nabla_{\theta} J(\theta) = \mathbb{E}{\tau \sim \pi{\theta}} \left[ \sum_{t=0}^{T} \nabla_{\theta} \log \pi_{\theta}(a_t | s_t) R_t \right]
+$$
+
+
+#### 对数导数技巧的证明
 
 
 
+假设 $P_{\theta}(X)$ 是关于 X 的概率分布，定义其梯度：
+$$
+\nabla_{\theta} P_{\theta}(X) = P_{\theta}(X) \nabla_{\theta} \log P_{\theta}(X)
+$$
+这个式子是由对数求导得到的：
+$$
+\nabla_{\theta} \log P_{\theta}(X) = \frac{\nabla_{\theta} P_{\theta}(X)}{P_{\theta}(X)}
+$$
+然后，对**期望值** $\mathbb{E}{X \sim P{\theta}} [f(X)]$ 求梯度：
+$$
+\nabla_{\theta} \mathbb{E}{X \sim P{\theta}} [f(X)]
+= \nabla_{\theta} \int P_{\theta}(X) f(X) dX
+$$
+
+$$
+= \int \nabla_{\theta} P_{\theta}(X) f(X) dX
+$$
+
+$$
+= \int P_{\theta}(X) \nabla_{\theta} \log P_{\theta}(X) f(X) dX
+$$
+
+把 $P_{\theta}(X)$ 提出到期望符号外：
+$$
+= \mathbb{E}{X \sim P{\theta}} [ f(X) \nabla_{\theta} \log P_{\theta}(X) ]
+$$
+得到：
+$$
+\nabla_{\theta} \mathbb{E}{X \sim P{\theta}} [f(X)] = \mathbb{E}{X \sim P{\theta}} [ f(X) \nabla_{\theta} \log P_{\theta}(X) ]
+$$
 
 
+### 9.2 REINFORCE
+
+$$
+\nabla_{\theta} J(\theta) = \mathbb{E}{\pi{\theta}} \left[ \sum_{t=0}^{T} \left( \sum_{t{\prime}=t}^{T} \gamma^{t{\prime}-t} r_{t{\prime}} \right) \nabla_{\theta} \log \pi_{\theta}(a_t | s_t) \right]
+$$
+
+REINFORCE 通过 MC 采样来估计策略梯度，基本流程如下：
+
+![截屏2025-02-07 01.40.29](/Users/n/Library/Application Support/typora-user-images/截屏2025-02-07 01.40.29.png)
+
+1. 初始化 $\theta$
+2. 采样轨迹：运行当前的策略 $\pi_{\theta}$ ，收集多个完整的 episode
+3. 对每个轨迹计算回报 $R_t$
+
+$$
+R_t = \sum_{k=t}^{T} \gamma^{k-t} r_k
+$$
+
+4. 计算梯度，更新参数
+
+$$
+\theta \leftarrow \theta + \alpha \sum_{t=0}^{T} \nabla_{\theta} \log \pi_{\theta}(a_t | s_t) R_t
+$$
+
+5. 重复，直到收敛
 
 
 
