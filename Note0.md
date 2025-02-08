@@ -2123,8 +2123,6 @@ $$
 
 #### 对数导数技巧的证明
 
-
-
 假设 $P_{\theta}(X)$ 是关于 X 的概率分布，定义其梯度：
 $$
 \nabla_{\theta} P_{\theta}(X) = P_{\theta}(X) \nabla_{\theta} \log P_{\theta}(X)
@@ -2182,6 +2180,171 @@ $$
 $$
 
 5. 重复，直到收敛
+
+```python
+# REINFORCE 算法
+class REINFORCE:
+    def __init__(self, state_dim, hidden_dim, action_dim, lr, gamma):
+        self.policy_net = PolicyNet(state_dim, action_dim, hidden_dim)
+        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=lr)
+        self.gamma = gamma
+
+    def update(self, transition_dict):
+        rewards = transition_dict['rewards']
+        states = torch.tensor(transition_dict['states'], dtype=torch.float32)
+        actions = torch.tensor(transition_dict['actions'], dtype=torch.int64)
+
+        G = 0
+        returns = []
+        
+        for r in reversed(rewards):
+            G = r + self.gamma * G
+            returns.insert(0, G)
+        
+        # 累积回报
+        returns = torch.tensor(returns, dtype=torch.float32)
+        # 计算策略的 log 概率
+        log_probs = torch.log(self.policy_net(states))
+        # 转列向量
+        actions = action.view(-1, 1)
+        # log_prob (batch_size, action_dim)->(batch_size, )
+        # 选出对应动作的对数概率
+        log_probs = log_probs.gather(1, actions).squeeze()
+				# 负对数概率 × rewards，做梯度上升
+        loss = -torch.mean(log_probs * returns)
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+```
+
+
+
+### 9.3 总结
+
+REINFORCE 是策略梯度方法的一种，是 RL 中蒙特卡洛策略优化方法之一，属于 model-free 方法
+
+基于策略梯度来优化策略，直接调整策略参数，使得期望回报最大化。
+
+
+
+**REINFORCE 的优点在于：**
+
+简单直观：直接优化策略，很容易实现
+
+策略优化稳定，相比于 Q-learning，策略梯度在连续动作空间中表现更好
+
+
+
+**REINFORCE 的缺点在于：**
+
+高方差：因为是基于完整的 episode 更新，梯度的方差比较大，收敛速度慢
+
+样本效率低：REINFORCE 属于 on-policy 策略，需要大量的样本来估计策略梯度
+
+缺乏 baseline：例如减去 $V(s)$ 来降低方差，这就是后面的 Actor-Critic 方法的改进点之一。
+
+
+
+## Chap10.Actor-Critic
+
+Actor-Critic 结合了 值函数 和 策略函数的思想：
+
+Actor 决定怎么行动，根据状态 $s$ 选择动作 $a$
+
+Critic 评价动作的好坏，指导 Actor 优化
+
+
+
+AC 方法的核心思想是：
+
+- **Actor 负责决策**：基于当前策略 policy $\pi(a | s)$选择动作。
+
+- **Critic 负责评价**：使用 **价值函数** $V(s)$ 或 **优势函数** $A(s, a)$ 来衡量 Actor 选择的动作是否比平均水平更好
+
+- **Actor 依赖 Critic 进行更新**：Critic 计算出的价值信号用于调整策略，使得高回报的动作被执行的概率更高
+
+
+
+### 10.1 Actor-Critic
+
+ 在策略梯度中，可以把梯度写成这个更一般的形式：
+$$
+g = \mathbb{E} \left[ \sum_{t=0}^{T} \psi_t \nabla_\theta \log \pi_\theta(a_t | s_t) \right]
+$$
+其中，$\psi_t$可以有很多种形式： 
+
+1. $\displaystyle \sum_{t'=0}^{T} \gamma^{t'} r_{t'}$：轨迹的总回报；
+2. $\displaystyle \sum_{t'=t}^{T} \gamma^{t'-t} r_{t'}$：动作$a_t$之后的回报； 
+3. $\displaystyle \sum_{t'=t}^{T} \gamma^{t'-t} r_{t'} - b(s_t)$：基准线版本的改进； 
+4. $Q^{\pi_\theta}(s_t, a_t)$：动作价值函数；
+5.  $A^{\pi_\theta}(s_t, a_t)$：优势函数； 
+6.  $r_t + \gamma V^{\pi_\theta}(s_{t+1}) - V^{\pi_\theta}(s_t)$：时序差分残差。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
