@@ -213,13 +213,379 @@ $$
 
 
 
+## Chap11.TRPO
+
+
+
+在策略梯度里，使用梯度上升来优化参数，使得策略 $\pi_{\theta}$ 最大化累积奖励。
+
+但是，在深度强化学习中，策略通常由神经网络参数化，沿着梯度更新会导致策略的剧烈变化，可能会使得策略性能突然下降，甚至破坏已经学到的良好策略。
+
+
+
+TRPO(Trust Region Policy Optimization) 就是为了解决这个问题，它引入了一个信任区域 trust region，确保每次更新策略的时候，策略的变化不会太大，从而保证学习的稳定性。
+
+
+
+### 11.1 KL 散度
+
+对于两个概率分布 $P(x)$ 和 $Q(x)$ ，它们的 **KL 散度** 定义为：
+$$
+D_{\text{KL}}(P || Q) = \sum_{x} P(x) \log \frac{P(x)}{Q(x)}
+$$
+或者在连续情况下：
+$$
+D_{\text{KL}}(P || Q) = \int P(x) \log \frac{P(x)}{Q(x)} dx
+$$
+其中：
+
+- $P(x)$ 是真实分布（通常是目标分布）。
+- $Q(x)$ 是近似分布（通常是当前模型的分布）。
+- $\log \frac{P(x)}{Q(x)}$ 反映了在 $x$ 处， $Q(x)$ 偏离 $P(x)$ 的程度。
+- **KL 散度是非对称的**，即 $D_{\text{KL}}(P || Q) \neq D_{\text{KL}}(Q || P) $。
+
+
+
+**直观理解**：
+
+- 当 $P(x)$ 和 $Q(x)$ 非常接近时， $D_{\text{KL}}(P || Q)$ 约等于 0。
+- 如果 $Q(x)$ 在 $P(x)$ 可能性较大的地方概率很低（即 $Q(x)$ 没有很好地近似 $P(x)$ ），那么 KL 散度会很大。
+- **KL 散度衡量的是 Q 相比于 P 的信息丢失**。
+
+
+
+**KL散度可以看作是 P 分布下的 Q 分布的信息损失，或者说 P 期望的概率分布和 Q 之间的偏离程度。**
+
+**衡量信息损失：**
+
+- 若用 $Q(x)$ 来近似 $P(x)$，则 KL 散度衡量的是使用 $Q(x)$ 而损失了多少信息
+- 例如，$P(x)$ 是真实世界的分布，而 $Q(x)$ 是神经网络的拟合分布，那么 KL 散度告诉的是 **模型还差多少**
+
+$D_{\text{KL}}(P || Q) \neq D_{\text{KL}}(Q || P) $，它是基于 $P(x)$​ 计算的。
+
+
+
+在 TRPO 和 PPO 中，KL 散度用于限制策略更新的幅度，防止策略突然崩坏，从而保证训练的稳定性。
+
+KL 散度本质上1是一个衡量两个概率分布相似度的度量，帮助控制策略更新的稳定性。
+
+
+
+### 11.2 重要性采样
+
+重要性采样是一种统计方法，用于在不同的概率分布下进行样本估计。
+
+核心思想是 **通过调整样本的权重** 来纠正因 **采样分布和目标分布不同** 所带来的偏差。
+
+
+
+简单来说，**重要性采样**的目的是：
+
+**从一个易于采样的分布（通常能容易地采样的分布）中生成样本，然后使用这些样本来估计另一个目标分布（关心的分布）的期望。**
+
+
+
+在 RL 中，通常在某个策略下采样数据，但是实际关心的目标是另一个不同的策略下的数据的期望。
+
+直接用一个策略的样本来估计另一个策略的期望会有偏差，**重要性采样通过给样本加权重来纠正这个偏差**。
+
+
+
+假设有两个概率分布： $p(x)$ （可以采样的分布，行为分布）和 $q(x)$ （感兴趣的分布，叫做目标分布）。
+
+计算目标分布下的期望：
+$$
+\mathbb{E}_{q}[f(x)] = \int f(x) q(x) dx
+$$
+但实际上无法从 $q(x)$ 采样，所以从 $p(x)$ 行为分布中采样，然后根据重要性定理来调整权重，使得在目标分布 $q(x)$ 下的期望更准确。
+
+
+
+**公式：**
+$$
+\mathbb{E}_{q}[f(x)] = \int f(x) q(x) dx = \int f(x) \frac{q(x)}{p(x)} p(x) dx
+$$
+其中：
+
+- $\frac{q(x)}{p(x)}$ 是重要性权重。它衡量了样本 $x$ 在目标分布 $q(x)$ 和行为分布 $p(x)$ 之间的差异。
+- $p(x)$ 是从中采样的分布（行为分布）。
+- $q(x)$ 是关心的分布（目标分布）。
+
+通过从 **行为分布** $p(x)$ 中采样样本，然后根据 **权重** $\frac{q(x)}{p(x)}$ 来调整样本，从而正确估计目标分布 $q(x)$ 下的期望。
+
+
+
+在RL中，策略优化的一个关键问题是如何通过采样旧策略的数据来优化新策略。因为我们有一个旧策略 $\pi_\theta$ ，但是要更新它并得到新策略 $\pi_{\theta{\prime}}$ 下的期望回报。用重要性采样解决。
+
+
+
+直接上来理解：
+
+- **行为分布**是从旧策略（行为分布）中采样数据，因为这些数据已经收集好了。
+- **目标分布**是希望优化的是新策略（目标分布）。
+- 调整权重由于新旧策略不同，通过重要性采样的比率来调整权重，从而让旧数据对新策略的估计更准确。
 
 
 
 
 
+### 11.3 策略目标
+
+首先，假设当前策略是 $\pi$ ，策略参数为 $\theta$ ，那么目标函数 $J(\theta)$ 的形式是期望 **从当前策略** $\pi_\theta$ **出发的回报**，即：
+$$
+J(\theta) = \mathbb{E}{\pi\theta} \left[ V^{\pi_\theta}(s_0) \right]\\
+
+J(\theta) = \mathbb{E}{\pi\theta} \left[ \sum_{t=0}^{\infty} \gamma^t r_t \right]
+$$
+由于初始状态 $s$​ 的分布于策略无关，所以：
+$$
+J(\theta) = \mathbb{E}_{\pi_{\theta'}} \left[ \sum_{t=0}^\infty \gamma^t V^{\pi_\theta}(s_t) - \sum_{t=1}^\infty \gamma^t V^{\pi_\theta}(s_t) \right]
+$$
+
+$$
+J(\theta) = \mathbb{E}_{\pi_{\theta'}} \left[ \sum_{t=0}^\infty \gamma^t V^{\pi_\theta}(s_t) - \sum_{t=0}^\infty \gamma^{t+1} V^{\pi_\theta}(s_{t+1}) \right]
+$$
+
+$$
+J(\theta) = -\mathbb{E}_{\pi_{\theta'}} \left[\sum_{t=0}^\infty \gamma^{t+1} V^{\pi_\theta}(s_{t+1}) -\sum_{t=0}^\infty \gamma^t V^{\pi_\theta}(s_t)\right]
+$$
+
+$$
+J(\theta) = -\mathbb{E}_{\pi_{\theta'}} \left[\sum_{t=0}^\infty \gamma^t(\gamma V^{\pi_\theta}(s_{t+1}) -  V^{\pi_\theta}(s_t))\right]
+$$
+
+其中 $\gamma V(s_{t+1})-V(s_t)$ 是时序差分残差，新旧策略的目标函数的差距为：
+$$
+J(\theta') - J(\theta) = \mathbb{E}_{s_0} [V^{\pi_{\theta'}}(s_0)] - \mathbb{E}_{s_0} [V^{\pi_{\theta}}(s_0)] 
+$$
+
+$$
+J(\theta') - J(\theta) = \mathbb{E}_{\pi_{\theta'}} \left[ \sum_{t=0}^{\infty} \gamma^t (r(s_t, a_t) + \gamma V^{\pi_{\theta}}(s_{t+1}) - V^{\pi_{\theta}}(s_t)) \right]
+$$
+
+其中，新策略的回报是 $\mathbb{E}_{\pi_{\theta'}} \left[ \sum_{t=0}^\infty \gamma^t r(s_t, a_t) \right]$.
 
 
+
+将时序差分残差定义为优势函数：
+$$
+A^{\pi_\theta}(s_t, a_t) = r(s_t, a_t) + \gamma V^{\pi_\theta}(s_{t+1}) - V^{\pi_\theta}(s_t)
+$$
+因此，性能差距简化为：
+$$
+J(\theta') - J(\theta) = \mathbb{E}_{\pi_{\theta'}} \left[ \sum_{t=0}^\infty \gamma^t A^{\pi_\theta}(s_t, a_t) \right]
+$$
+
+- 优势函数 $A(s,a)$ 衡量在状态 $s$ 下选择动作 $a$ 的相对价值，相对于策略 $\pi_{\theta}$ 的值函数 $V(s)$
+- 若新策略 $\pi_{\theta'}$ 在优势函数为正的动作上增加概率，则性能差距 $J(\theta')-J(\theta)$ 增大
+
+
+
+在马尔可夫决策过程中，每个状态 $s_t$ 的访问概率可以用 **折扣状态访问分布** $\nu^{\pi_{\theta{\prime}}}(s)$ 表示：
+$$
+\nu^{\pi_{\theta{\prime}}}(s) = (1 - \gamma) \sum_{t=0}^{\infty} \gamma^t P(s_t = s | \pi_{\theta{\prime}})
+$$
+通过状态访问分布 $\nu^{\pi_{\theta{\prime}}}(s)$ ，可以将时间步上的累积求和转换为 **状态访问分布上的期望**：
+$$
+\mathbb{E}{\pi{\theta{\prime}}} \left[ \sum_{t=0}^{\infty} \gamma^t A^{\pi_\theta}(s_t, a_t) \right] = \frac{1}{1 - \gamma} \mathbb{E}{s \sim \nu^{\pi{\theta{\prime}}}} \mathbb{E}{a \sim \pi{\theta{\prime}}} \left[ A^{\pi_\theta}(s, a) \right]
+$$
+这个公式的意思是：
+
+新策略 $\pi_{\theta'}$ 是否比旧策略 $\pi_{\theta}$ 更好，取决于在所有访问的 s-a 下，优势函数的期望是否更大
+
+
+
+直接优化这个公式很困难
+
+**难点1：$\nu^{\pi_{\theta{\prime}}}(s)$ 依赖于 $\pi_{\theta'}$**
+
+- 也就是说，需要用**新策略** $\pi_{\theta{\prime}}$ 来采样新的状态分布 $\nu^{\pi_{\theta{\prime}}}(s)$ ，但问题是现在还没有这个新策略
+- 直觉上，想评价一个新方法，但还没试过它，怎么能知道它的效果？
+- 这就相当于：想换工作，但是只有在换了之后才能知道新的工作好不好，这种情况很麻烦。
+
+**难点2：遍历所有可能的新策略不现实**
+
+- 若要尝试所有可能的 $\pi_{\theta'}$ 然后逐个计算回报，这不可行，策略空间太大了
+
+
+
+TRPO（信任区域策略优化） 采用了一种近似的方法来简化计算：
+
+1. **假设新策略** $\pi_{\theta{\prime}}$ **和旧策略** $\pi_{\theta}$ **差别不大**（即，每次更新策略的时候，不让它变化太大）。
+2. **如果策略变化不大，那么状态访问分布** $\nu^{\pi_{\theta{\prime}}}(s)$ **也不会变太多**。
+   - 也就是说，**新策略访问的状态分布和旧策略差不多**。
+   - 所以我们可以**用旧策略的状态分布** $\nu^{\pi_{\theta}}(s)$ **来近似** $\nu^{\pi_{\theta{\prime}}}(s) $。
+   - 这样就不需要重新采样新的数据了，而是直接用旧的数据来估计新策略的效果
+
+于是，优化目标变成：
+$$
+L_{\theta}(\theta{\prime}) = J(\theta) + \frac{1}{1 - \gamma} \mathbb{E}{s \sim \nu^{\pi{\theta}}} \mathbb{E}{a \sim \pi{\theta{\prime}}} [ A^{\pi_{\theta}}(s, a) ]
+$$
+这个公式的意思是：
+
+**我们用旧策略 $\pi_{\theta}$ 的状态访问分布 $\nu^{\pi_{\theta}}(s)$ 来计算新策略的期望，避免了直接计算 $\nu^{\pi_{\theta{\prime}}}(s) $的麻烦。**
+
+
+
+**重要性采样修正**
+
+状态分布用 $\pi_{\theta}$ 来近似，但是动作是由新策略 $\pi_{\theta'}$ 采样的，若直接用旧策略 $\pi_{\theta}$​ 采样的动作来估计，新策略的效果，可能会有偏差。
+
+
+
+采用重要性采样来修正偏差，即：
+$$
+\mathbb{E}{\pi{\theta{\prime}}} [ A^{\pi_\theta}(s, a) ] = \mathbb{E}{\pi\theta} \left[ \frac{\pi_{\theta{\prime}}(a | s)}{\pi_\theta(a | s)} A^{\pi_\theta}(s, a) \right]
+$$
+
+$$
+L_{\theta}(\theta{\prime}) = J(\theta) + \mathbb{E}{s \sim \nu^{\pi{\theta}}} \mathbb{E}{a \sim \pi{\theta}} \left[ \frac{\pi_{\theta{\prime}}(a | s)}{\pi_{\theta}(a | s)} A^{\pi_{\theta}}(s, a) \right]
+$$
+
+
+
+此外，还需要保证新旧策略足够接近，TRPO 用 KL 散步来衡量策略之间的距离，确保新旧策略状态访问分布变化很小。
+
+TRPO 提出的优化目标是：
+$$
+\max_{\theta{\prime}} L_{\theta}(\theta{\prime}) \quad \text{subject to} \quad \mathbb{E}{s \sim \nu^{\pi{\theta}}} \left[ D_{\text{KL}} (\pi_{\theta_k}(\cdot | s), \pi_{\theta{\prime}}(\cdot | s)) \right] \leq \delta
+$$
+不等式约束定义了策略空间中的一个 KL 球，被称为信任区域。
+
+在这个区域中，可以认为当前学习的策略和环境交互的状态分布于上一轮策略最后采样的状态分布一致。
+
+可以基于一步行动的重要性采样方法使当前学习策略稳定提升。
+
+
+
+### 11.4 近似求解
+
+#### 11.4.1 多变量函数的泰勒展开
+
+对于多变量函数 $f(\theta)$ ，在 $\theta_k$ 处的泰勒展开式为:
+$$
+f(\theta) \approx f(\theta_k) + g^T (\theta - \theta_k) + \frac{1}{2} (\theta - \theta_k)^T H (\theta - \theta_k)
+$$
+其中：
+
+- $g$ 是 **梯度**： $g = \nabla_{\theta} f(\theta)$ 表示函数在 $\theta_k$处的变化速率（方向和大小）。
+- H 是 **黑塞矩阵**： **二阶导数** 的矩阵，表示函数在 $\theta_k$ 处的曲率，即函数的变化是如何加速或减速的。
+
+$$
+H = \begin{bmatrix}
+\frac{\partial^2 f}{\partial \theta_1^2} & \frac{\partial^2 f}{\partial \theta_1 \partial \theta_2} \\
+\frac{\partial^2 f}{\partial \theta_2 \partial \theta_1} & \frac{\partial^2 f}{\partial \theta_2^2}
+\end{bmatrix}
+$$
+
+在TRPO中，我们用黑塞矩阵来衡量 **KL 散度的曲率**，控制每次策略更新的步长，防止策略变化过快。
+
+通过泰勒展开，能够在当前点附近做局部近似，利用梯度和曲率来决定更新策略的方向和幅度
+
+
+
+#### 11.4.2 KKT 条件
+
+在 TRPO 中，存在约束条件：
+$$
+\mathbb{E}{s \sim \nu{\pi_{\theta_k}}} \left[D_{\text{KL}}(\pi_{\theta_k}(\cdot | s), \pi_{\theta{\prime}}(\cdot | s))\right] \leq \delta
+$$
+希望找到一个新的策略参数 $\theta{\prime} $，使得目标函数 $L_{\theta}(\theta{\prime})$ 最大化。
+
+同时，不能让新旧策略的 KL 散度变化太大，即 **策略更新不能过猛**，必须控制在 $\delta$ 以内。
+
+这是一个带约束的优化问题。普通的梯度优化方法（比如梯度下降）无法直接解决这种问题，它们只适用于无约束优化。
+
+
+
+KKT 条件是拉格朗日乘数法的推广，适用于约束的优化问题，可以用来找寻最优解。
+
+假设要最大化一个函数：$\max_x f(x)$，同时存在一个约束 $g(x)\le0$
+
+引入拉格朗日函数 $L(x,\lambda)=f(x)-\lambda g(x)$
+
+
+
+**KKT条件的四个主要部分**
+
+1. 可行性条件：$g(x) \le0$，最优解 $x$ 必须要满足约束条件
+2. 拉格朗日乘子非负性：$\lambda^* \ge 0$，确保乘子有效，且能够约束目标函数
+3. 互补松弛条件：$\lambda^* g(x^*) = 0$
+   - **如果约束没有被“触及”（即** $g(x^*) < 0$ **）**，那么拉格朗日乘子 $\lambda^*$ = 0 ，即这个约束对优化目标没有影响
+   - **如果约束正好被触及（即** $g(x^*) = 0$ **）**，那么拉格朗日乘子 $\lambda^*$​ > 0 ，说明约束在优化中起了作用。
+4. KKT站立条件：
+
+$$
+\nabla f(x) - \lambda^ \nabla g(x) = 0
+$$
+
+最优解 $x$ 需要满足目标函数的梯度与约束函数的梯度的一个平衡，即方向要一致
+
+
+
+**怎么在 TRPO 中应用 KKT 条件**
+
+一个二次约束，即 KL 散度的约束，确保新旧策略之间的差异不超过 $\delta$
+$$
+\frac{1}{2} (\theta{\prime} - \theta_k)^T H (\theta{\prime} - \theta_k) \leq \delta
+$$
+为了求解这个带约束的优化问题，引入拉格朗日乘子 $\lambda$，构建拉格朗日函数：
+$$
+\mathcal{L}(\theta{\prime}, \lambda) = L_{\theta}(\theta{\prime}) - \lambda \left( \frac{1}{2} (\theta{\prime} - \theta_k)^T H (\theta{\prime} - \theta_k) - \delta \right)
+$$
+根据 **KKT 条件**，我们需要对 $\theta{\prime}$ 求导，得到以下条件：
+$$
+\nabla_{\theta{\prime}} L_{\theta}(\theta{\prime}) - \lambda H (\theta{\prime} - \theta_k) = 0
+$$
+给出了梯度更新方向，然后用 KKT 条件得到更新公式：
+$$
+\theta{\prime} = \theta_k + \lambda H^{-1} g
+$$
+其中：
+
+- $g = \nabla_{\theta} L_{\theta}(\theta)$ 是目标函数的梯度。
+- $H^{-1}$ 是黑塞矩阵的逆，表示 KL 散度的曲率。
+- $\lambda$ 是拉格朗日乘子，控制约束对优化目标的影响。
+
+接下来，通过 **互补松弛条件**，我们可以计算出 $\lambda$ ，从而得到最终的更新公式：
+$$
+\lambda = \sqrt{\frac{2\delta}{g^T H^{-1} g}}
+$$
+这确保了每次更新时KL 散度不会超过$ \delta$ ，保证了策略更新的稳定性。
+
+
+$$
+\theta_{k+1} = \theta_k + \sqrt{\frac{2\delta}{g^T H^{-1} g}} H^{-1} g
+$$
+其中：
+
+- $g$ ：目标函数的梯度，决定了更新的方向。
+- $H^{-1} g$ ：调整了更新的幅度，考虑了 KL 散度的曲率。
+-  $\sqrt{\frac{2\delta}{g^T H^{-1} g}} $：确保每次更新都不会使 KL 散度超出阈值 $\delta$ ，防止更新过大。
+
+
+
+### 11.5 共轭梯度
+
+在神经网络中，策略函数有成千上万的参数。
+
+若直接计算Hessian 矩阵的逆，所需的计算量和内存资源会非常庞大
+
+
+
+TRPO 采用了共轭态度来解决这个问题，核心思想是：
+
+直接计算梯度和黑塞矩阵的乘积，避免了直接计算Hessian 矩阵的逆
+
+在 TRPO 中，假设 KL 散度的约束条件是：
+$$
+\frac{1}{2} (\beta x)^T H (\beta x) = \delta
+$$
+步长 $\beta$ 为：
+$$
+\beta = \sqrt{\frac{2\delta}{x^T H x}}
+$$
+这样确保了每次更新都不会导致 KL 散度超过阈值 $\delta$
 
 
 
