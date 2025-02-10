@@ -591,5 +591,81 @@ $$
 
 
 
+## Chap12.PPO
+
+PPO 基于 TRPO 的思想，有大量的实验结果表明，与 TRPO相比，PPO 能学的一样好，甚至更快
+
+
+
+### 12.1 PPO-惩罚(Penalty)
+
+PPO-惩罚（PPO-Penalty）用拉格朗日乘数法直接将 KL 散度的限制放进了目标函数中，变成了一个无约束的优化问题，在迭代的过程中不断更新 KL 散度前的系数。
+
+核心思想是在优化目标中引入惩罚项，防止新策略与旧策略差异过大。
+
+
+
+PPO-Penalty 的优化目标函数为：
+$$
+\arg \max_{\theta} \mathbb{E}{s \sim \nu{\pi_{\theta}}} \left[ \mathbb{E}{a \sim \pi{\theta}} \left[ \frac{\pi_{\theta}(a|s)}{\pi_{\theta_k}(a|s)} A^{\pi_{\theta_k}}(s, a) - \beta D_{\text{KL}} \left( \pi_{\theta_k}(\cdot|s), \pi_{\theta}(\cdot|s) \right) \right] \right]
+$$
+其中：
+- 第一项：基于重要性采样的策略梯度目标，通过新旧策略的概率比 $\frac{\pi_\theta}{\pi_{\theta_{\text{old}}}}$ 加权优势函数 $A_t$，鼓励高优势动作
+- 第二项：KL 散度惩罚项，用于约束新旧策略的差异，$\beta$ 为自适应惩罚系数。
+
+#### 
+
+为了动态调整惩罚系数 $\beta$，PPO 会根据 KL 散度 $d_k$ 的值动态调整惩罚系数 $\beta$。规则如下：
+
+- **如果 KL 散度** $d_k$ **小于设定的阈值** $\delta / 1.5$ ，则减小 $\beta$ ：
+
+$$
+\beta_{k+1} = \frac{\beta_k}{2}
+$$
+
+​	这意味着，若 KL 散度较小，策略更新幅度也较小，可以进一步放松 KL 散度的约束，从而增大学习步长
+
+- **如果 KL 散度** $d_k$ **大于** $\delta \times 1.5$ ，则增大 $\beta$ ：
+
+$$
+\beta_{k+1} = 2 \beta_k
+$$
+
+​	这意味着，若 KL 散度过大，表示策略更新幅度过大，需要加大惩罚，限制策略变化
+
+- **否则**（即 $\delta / 1.5 \leq d_k \leq \delta$ ），不调整 $\beta$ ，保持当前值：
+
+$$
+\beta_{k+1} = \beta_k
+$$
+
+$\delta$ 为预设的超参数，用于控制 KL 散度的最大值，通常选在0.01 到 0.1 之间。
+
+
+
+### 12.2 PPO-截断(Clip)
+
+PPO-Clip 方法，直接在目标函数中进行限制，以确保新策略和旧策略的参数差距不会太大。
+
+PPO-Clip 的优化目标是：
+$$
+\arg \max_{\theta} \mathbb{E}{s \sim \nu{\pi_{\theta_k}}} \mathbb{E}{a \sim \pi{\theta_k}(\cdot | s)}
+\left[ \min \left( \frac{\pi_{\theta}(a|s)}{\pi_{\theta_k}(a|s)} A^{\pi_{\theta_k}}(s, a),
+\text{clip} \left( \frac{\pi_{\theta}(a|s)}{\pi_{\theta_k}(a|s)}, 1 - \epsilon, 1 + \epsilon \right) A^{\pi_{\theta_k}}(s, a) \right) \right]
+$$
+
+- $\frac{\pi_{\theta}(a|s)}{\pi_{\theta_k}(a|s)}$ 是新旧策略的概率比，衡量策略更新的幅度	
+-  $\epsilon$ 用于限制策略更新的范围
+- $clip(x, l, r) = max(min(x, r), l)$，即将 $x$ 限制在区间 $[l, r]$ 内
+
+
+
+PPO-Clip 通过截断操作，限制策略的更新幅度，防止策略在单次更新时发生过大变化
+
+- **如果** $A^{\pi_{\theta_k}}(s, a) > 0$，优化目标希望增大 $\frac{\pi_{\theta}(a|s)}{\pi_{\theta_k}(a|s)}$ ，但不会超过 $1 + \epsilon$ 
+- **如果** $A^{\pi_{\theta_k}}(s, a) < 0 $，优化目标希望减小 $\frac{\pi_{\theta}(a|s)}{\pi_{\theta_k}(a|s)}$ ，但不会低于 $1 - \epsilon$ 
+
+这个限制防止策略在单次更新时发生过大变化，提高训练的稳定性，同时仍然允许一定程度的优化。
+
 
 

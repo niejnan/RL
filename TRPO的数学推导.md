@@ -261,8 +261,8 @@ f(\theta) \approx f(\theta_k) + g^T (\theta - \theta_k) + \frac{1}{2} (\theta - 
 $$
 其中：
 
-- $g$ 是 **梯度**： $g = \nabla_{\theta} f(\theta)$ 表示函数在 $\theta_k$处的变化速率（方向和大小）。
-- H 是 **黑塞矩阵**： **二阶导数** 的矩阵，表示函数在 $\theta_k$ 处的曲率，即函数的变化是如何加速或减速的。
+- $g$ 是梯度： $g = \nabla_{\theta} f(\theta)$ 表示函数在 $\theta_k$处的变化速率（方向和大小）。
+- H 是黑塞矩阵： 二阶导数 的矩阵，表示函数在 $\theta_k$ 处的曲率，即函数的变化是如何加速或减速的。
 
 $$
 H = \begin{bmatrix}
@@ -271,7 +271,7 @@ H = \begin{bmatrix}
 \end{bmatrix}
 $$
 
-由于 KL 散度是 **关于参数** $\theta$ **的光滑函数**，可以使用 **泰勒展开** 进行近似：
+由于 KL 散度是关于参数 $\theta$ 的光滑函数，可以使用泰勒展开进行近似：
 $$
 D_{\text{KL}} (\pi_{\theta} || \pi_{\theta + \Delta\theta}) \approx D_{\text{KL}} (\pi_{\theta} || \pi_{\theta}) + \nabla_{\theta} D_{\text{KL}} (\pi_{\theta})^T \Delta\theta + \frac{1}{2} \Delta\theta^T H \Delta\theta
 $$
@@ -279,7 +279,7 @@ $$
 
 - **第一项** $D_{\text{KL}} (\pi_{\theta} || \pi_{\theta})$ = 0 （因为 KL 散度计算同一个分布的结果为 0）
 - **第二项** $\nabla_{\theta} D_{\text{KL}} (\pi_{\theta})^T \Delta\theta$ 是 KL 散度对参数的梯度，但是由于 $\theta$ 和 $\theta{\prime}$ 很接近，KL 散度在 $\theta$ 处的梯度通常接近0，因此这一项可以忽略
-- **第三项** $\frac{1}{2} \Delta\theta^T H \Delta\theta$ 取决于 **Hessian 矩阵**（即 KL 散度对参数的二阶导数），是二阶近似项。
+- **第三项** $\frac{1}{2} \Delta\theta^T H \Delta\theta$ 取决于Hessian 矩阵（即 KL 散度对参数的二阶导数），是二阶近似项。
 
 
 
@@ -448,3 +448,99 @@ $$
      - 这里 $\beta_k$​ 是一个调整因子，通常通过 **Fletcher-Reeves 或 Polak-Ribière** 等公式计算，它帮助我们根据当前的残差调整新的搜索方向。
      - 这是为了使得新的搜索方向不仅考虑当前的残差 $r_{k+1}$ ，还考虑之前的搜索方向
 4. **停止迭代**：当残差 $r_k$ 小于某个阈值时，表示解已经足够精确，达到停止条件，可以退出迭代。
+
+
+
+Hessian 矩阵可能是一个百万维度×百万维度的矩阵，计算 Hessian 矩阵并存储它的所有元素代价很高。
+
+假设有一个目标函数 $f(\theta)$，Hessian 矩阵 $H$ 定义为：
+$$
+H = \nabla^2_{\theta} f(\theta)
+$$
+计算Hessian 矩阵与向量 $v$ 的乘积 $H v$ ，要使用以下表达式：
+$$
+Hv = \nabla_{\theta} \left( \nabla_{\theta} f(\theta)^T v \right)
+$$
+
+- 即先计算 KL 散度的梯度 $ \nabla_{\theta} D_{\text{KL}} $
+- 在计算这个梯度与向量 $v$ 的点乘
+- 最后再对这个点乘的结果计算梯度，得到 $Hv$
+
+
+
+#### 线性搜索
+
+TRPO 通过二阶泰勒展开近似 KL 散度约束，并使用共轭梯度法计算自然梯度更新方向。但是，二阶近似不是严格的全局求解，只是局部的近似解。
+
+因此，直接使用这个解进行策略更新可能会出现两个问题：
+
+- **更新后的策略** $\theta{\prime}$ **可能比当前策略** $\theta_k$ **更差** —— 也就是说，目标函数 $L_{\theta_k} $可能没有真正提升。_
+- **可能违反 KL 散度约束** —— 由于 Hessian 近似误差，可能导致 KL 散度增量 $D_{\text{KL}} (\pi_{\theta_k}, \pi_{\theta{\prime}})$ 超过预设的阈值 $\delta$ 
+
+为了避免这些问题，TRPO 在最终更新参数前，加入了一步线性搜索，确保新的策略 $\theta_{k+1}$ 既能提升目标函数 $L_{\theta_k} $，又满足 KL 散度约束。
+
+
+
+线性搜索不会直接使用计算得到的自然梯度更新步长，而是通过指数衰减进行逐步尝试，寻找一个合适的步长：
+$$
+\theta_{k+1} = \theta_k + \alpha^i \sqrt{\frac{2\delta}{x^T H x}} x
+$$
+其中：
+
+- $\alpha \in (0,1)$ 是一个超参数，通常设为 0.5（意味着每次步长缩小 50%）。
+- $i$ 是最小的非负整数，表示我们在不断缩小步长，直到满足条件。
+- $x$ **是共轭梯度法求出的自然梯度方向**，即一个近似的更新方向。
+- $\sqrt{\frac{2\delta}{x^T H x}}$ **确保在未调整** $\alpha$ **时，步长能恰好满足 KL 散度约束。**
+
+
+
+换句话说，会先尝试一个较大的步长，然后如果更新后的策略不符合 KL 约束或目标函数下降了，就不断缩小步长，直到找到一个合适的 $i$ ，使得：
+
+- $D_{\text{KL}} (\pi_{\theta_k}, \pi_{\theta_{k+1}}) \leq \delta$ （满足 KL 约束）
+- $L_{\theta_{k+1}} > L_{\theta_k}$ （目标函数变大）
+
+
+
+#### 广义优势估计 GAE
+
+$$
+A^{\pi}(s, a) = Q^{\pi}(s, a) - V^{\pi}(s)
+$$
+
+单步 TD 误差定义为：
+$$
+\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)
+$$
+GAE 的核心思想是 结合多步 TD 误差，通过指数加权平均不同步数的估计：
+$$
+\begin{align*}
+A_t^{(1)} &= \delta_t \\
+&= -V(s_t) + r_t + \gamma V(s_{t+1}) \\
+A_t^{(2)} &= \delta_t + \gamma \delta_{t+1} \\
+&= -V(s_t) + r_t + \gamma r_{t+1} + \gamma^2 V(s_{t+2}) \\
+A_t^{(3)} &= \delta_t + \gamma \delta_{t+1} + \gamma^2 \delta_{t+2} \\
+&= -V(s_t) + r_t + \gamma r_{t+1} + \gamma^2 r_{t+2} + \gamma^3 V(s_{t+3}) \\
+&\vdots \\
+A_t^{(k)} &= \sum_{l=0}^{k-1} \gamma^l \delta_{t+l} \\
+&= -V(s_t) + r_t + \gamma r_{t+1} + \cdots + \gamma^{k-1} r_{t+k-1} + \gamma^k V(s_{t+k})
+\end{align*}
+$$
+然后，GAE 将这些不同步数的优势估计进行指数加权平均：
+$$
+\begin{align*}
+A_t^{GAE} &= (1 - \lambda)(A_t^{(1)} + \lambda A_t^{(2)} + \lambda^2 A_t^{(3)} + \cdots) \\
+&= (1 - \lambda)(\delta_t + \lambda (\delta_t + \gamma \delta_{t+1}) + \lambda^2 (\delta_t + \gamma \delta_{t+1} + \gamma^2 \delta_{t+2}) + \cdots) \\
+&= (1 - \lambda)(\delta (1 + \lambda + \lambda^2 + \cdots) + \gamma \delta_{t+1} (\lambda + \lambda^2 + \lambda^3 + \cdots) + \gamma^2 \delta_{t+2} (\lambda^2 + \lambda^3 + \lambda^4 + \cdots) + \cdots) \\
+&= (1 - \lambda) \left( \delta_t \frac{1}{1 - \lambda} + \gamma \delta_{t+1} \frac{\lambda}{1 - \lambda} + \gamma^2 \delta_{t+2} \frac{\lambda^2}{1 - \lambda} + \cdots \right) \\
+&= \sum_{l=0}^{\infty} (\gamma \lambda)^l \delta_{t+l}
+\end{align*}
+$$
+
+- 当 $\lambda=1$ 时，GAE 退化成 MC 估计，高方差，低偏差
+
+- 当 $\lambda=0$ 时，GAE 退化成 TD 估计，低方差，高偏差
+
+为了方便计算，GAE 可以用递归形式表示：
+$$
+A_t^{\text{GAE}(\gamma, \lambda)} = \delta_t + (\gamma \lambda) \cdot A_{t+1}^{\text{GAE}(\gamma, \lambda)}
+$$
