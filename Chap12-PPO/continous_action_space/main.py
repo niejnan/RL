@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from tqdm import tqdm
-from ppo import PPO
+from ppo import PPOContinuous
 
 def set_seed(seed):
     random.seed(seed)
@@ -51,15 +51,16 @@ def train_on_policy_agent(env, agent, num_episodes, seed):
                 pbar.update(1)
     return return_list
 
-def main(actor_lr, critic_lr, num_episodes, hidden_dim, gamma, lmbda, epochs, eps, seed):
+def main(actor_lr, critic_lr, num_episodes, hidden_dim, gamma, lmbda, epochs, epsilon, seed):
 
-    env_name = 'CartPole-v0'
+    # Pendulum-v0 已经被弃用了
+    env_name = 'Pendulum-v1'
     env = gym.make(env_name)
 
     state_dim = env.observation_space.shape[0]
-    action_dim = env.action_space.n
-    agent = PPO(state_dim, hidden_dim, action_dim, actor_lr, critic_lr, lmbda,
-                epochs, eps, gamma)
+    action_dim = env.action_space.shape[0]
+    agent = PPOContinuous(state_dim, hidden_dim, action_dim, actor_lr, critic_lr, lmbda,
+                epochs, epsilon, gamma)
 
     return_list = train_on_policy_agent(env, agent, num_episodes, seed)
 
@@ -78,14 +79,15 @@ def main(actor_lr, critic_lr, num_episodes, hidden_dim, gamma, lmbda, epochs, ep
     plt.show()
 
 if __name__ == "__main__":
-    actor_lr = 1e-3
-    critic_lr = 1e-2
-    num_episodes = 500
+
+    actor_lr = 1e-4
+    critic_lr = 5e-3
+    num_episodes = 10000
     hidden_dim = 128
-    gamma = 0.98
-    lmbda = 0.95
+    gamma = 0.9
+    lmbda = 0.9
     epochs = 10
-    eps = 0.2
+    epsilon = 0.2
     seed = 0
 
-    main(actor_lr, critic_lr, num_episodes, hidden_dim, gamma, lmbda, epochs, eps, seed)
+    main(actor_lr, critic_lr, num_episodes, hidden_dim, gamma, lmbda, epochs, epsilon, seed)

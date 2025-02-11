@@ -55,7 +55,7 @@ Actor 的更新用策略梯度完成， Critic 的更新用时序差分残差的
 $$
 \mathcal{L}(\omega) = \frac{1}{2} (r + \gamma V_{\omega}(s_{t+1}) - V_{\omega}(s_t))^2 
 $$
-与 DQN 中一样，我们采取类似于目标网络的方法，将上式中 $ r + \gamma V_{\omega}(s_{t+1}) $ 作为时序差分目标，不会产生梯度来更新价值函数。
+与 DQN 中一样，采取类似于目标网络的方法，将上式中 $ r + \gamma V_{\omega}(s_{t+1}) $ 作为时序差分目标，不会产生梯度来更新价值函数
 
 因此，价值函数的梯度为：
 $$
@@ -666,6 +666,56 @@ PPO-Clip 通过截断操作，限制策略的更新幅度，防止策略在单�
 - **如果** $A^{\pi_{\theta_k}}(s, a) < 0 $，优化目标希望减小 $\frac{\pi_{\theta}(a|s)}{\pi_{\theta_k}(a|s)}$ ，但不会低于 $1 - \epsilon$ 
 
 这个限制防止策略在单次更新时发生过大变化，提高训练的稳定性，同时仍然允许一定程度的优化。
+
+
+
+
+
+
+
+## Chap13. DDPG
+
+Deep deterministic policy gradient 深度确定性策略梯度
+
+DDPG 也属于 AC 算法，但是不同点在于，DDPG 是学习一个确定性策略，而不是像 REINFORCE 、TRPO 和 PPO 学习的是一个随机性策略。DDPG 的动作由函数直接确定，表示为 $α=μ_θ(s)$。
+
+
+
+### 13.1 DDPG 算法
+
+DDPG 需要用到4个神经网络，Actor 和 Critic 各用一个网络，此外各有一个目标网络。
+
+在 DQN 中，每搁一段时间将 $Q$ 网络复制给目标 $Q$ 网络。
+
+DDPG中，目标$Q$网络的更新，采取的是一种软更新的方式，让目标 $Q$ 网络缓慢更新，逐渐接近 $Q$ 网络：
+$$
+\omega^- \leftarrow \tau \omega + (1 - \tau) \omega^-
+$$
+ $\tau$ 等于1的时候，就和 DQN 的更新方式一样了。
+
+
+
+DDPG 在行为策略上引入一个随机噪声 $N$ 来探索
+
+![截屏2025-02-12 01.54.41](/Users/n/Library/Application Support/typora-user-images/截屏2025-02-12 01.54.41.png)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
