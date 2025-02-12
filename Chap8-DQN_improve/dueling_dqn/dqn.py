@@ -19,12 +19,13 @@ class DQN:
                  device,
                  dqn_type='VanillaDQN'):
         self.action_dim = action_dim
+
         if dqn_type == 'DuelingDQN':  # Dueling DQN采取不一样的网络框架
             self.q_net = VAnet(state_dim, hidden_dim,
                                self.action_dim).to(device)
             self.target_q_net = VAnet(state_dim, hidden_dim,
                                       self.action_dim).to(device)
-        else:
+        else: # 经典 DQN
             self.q_net = QNet(state_dim, hidden_dim,
                               self.action_dim).to(device)
             self.target_q_net = QNet(state_dim, hidden_dim,
@@ -39,6 +40,10 @@ class DQN:
         self.device = device
 
     def take_action(self, state):
+        """
+        epsilon-贪婪
+        """
+
         if np.random.random() < self.epsilon:
             action = np.random.randint(self.action_dim)
         else:
@@ -63,6 +68,7 @@ class DQN:
                              dtype=torch.float).view(-1, 1).to(self.device)
 
         q_values = self.q_net(states).gather(1, actions)
+        
         if self.dqn_type == 'DoubleDQN':
             max_action = self.q_net(next_states).max(1)[1].view(-1, 1)
             max_next_q_values = self.target_q_net(next_states).gather(

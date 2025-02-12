@@ -37,6 +37,7 @@ class DQN:
             action = np.random.randint(self.action_dim)
         else:
             state = torch.tensor([state], dtype=torch.float)
+            # 根据 QNet 选动作
             action = self.q_net(state).argmax().item()
         return action
     
@@ -59,9 +60,13 @@ class DQN:
 
         q_values = self.q_net(states).gather(1, actions.unsqueeze(1)) 
         # 下个状态的最大Q值
+
         if self.dqn_type == 'DoubleDQN': # DQN与Double DQN的区别
             max_action = self.q_net(next_states).max(1)[1].view(-1, 1)
+            
+            # 
             max_next_q_values = self.target_q_net(next_states).gather(1, max_action)
+        
         else: # DQN的情况
             max_next_q_values = self.target_q_net(next_states).max(1)[0].view(-1, 1)
         q_targets = rewards + self.gamma * max_next_q_values * (1 - dones)  # TD误差目标
