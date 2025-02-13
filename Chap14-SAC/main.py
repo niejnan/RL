@@ -1,17 +1,14 @@
-
-"""
-倒立摆环境测试
-"""
-
-import gym
+import torch
 import random
 import numpy as np
-import torch
+import gym
+import matplotlib.pyplot as plt
+
+from sac import SAC
 from replay_buffer import ReplayBuffer
 
-from ddpg import DDPG
 from tqdm import tqdm
-import matplotlib.pyplot as plt
+
 
 def moving_average(a, window_size):
     cumulative_sum = np.cumsum(np.insert(a, 0, 0)) 
@@ -57,44 +54,53 @@ def train_off_policy_agent(env, agent, num_episodes, replay_buffer, minimal_size
                 pbar.update(1)
     return return_list
 
+
+
 def main():
-    actor_lr = 3e-4
-    critic_lr = 3e-3
-    num_episodes = 200
-    hidden_dim = 64
-    gamma = 0.98
-    tau = 0.005  # 软更新参数
-    buffer_size = 10000
-    minimal_size = 1000
-    batch_size = 64
-    sigma = 0.01  # 高斯噪声标准差
-
-
     env_name = 'Pendulum-v1'
     env = gym.make(env_name)
-    random.seed(0)
-    np.random.seed(0)
-    torch.manual_seed(0)
-    replay_buffer = ReplayBuffer(buffer_size)
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
     action_bound = env.action_space.high[0]  # 动作最大值
-    agent = DDPG(state_dim, hidden_dim, action_dim, action_bound, sigma, actor_lr, critic_lr, tau, gamma)
+    random.seed(0)
+    np.random.seed(0)
+    torch.manual_seed(0)
 
-    return_list = train_off_policy_agent(env, agent, num_episodes, replay_buffer, minimal_size, batch_size)
+    actor_lr = 3e-4
+    critic_lr = 3e-3
+    alpha_lr = 3e-4
+    num_episodes = 100
+    hidden_dim = 128
+    gamma = 0.99
+    tau = 0.005  # 软更新参数
+    buffer_size = 100000
+    minimal_size = 1000
+    batch_size = 64
+    target_entropy = -env.action_space.shape[0]
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device(
+        "cpu")
 
+    replay_buffer = ReplayBuffer(buffer_size)
+    agent = SAC(state_dim, hidden_dim, action_dim, action_bound,
+                        actor_lr, critic_lr, alpha_lr, target_entropy, tau,
+                        gamma)
+
+    return_list = train_off_policy_agent(env, agent, num_episodes,
+                                                replay_buffer, minimal_size,
+                                                batch_size)
+    
     episodes_list = list(range(len(return_list)))
     plt.plot(episodes_list, return_list)
     plt.xlabel('Episodes')
     plt.ylabel('Returns')
-    plt.title('DDPG on {}'.format(env_name))
+    plt.title('SAC on {}'.format(env_name))
     plt.show()
 
     mv_return = moving_average(return_list, 9)
     plt.plot(episodes_list, mv_return)
     plt.xlabel('Episodes')
     plt.ylabel('Returns')
-    plt.title('DDPG on {}'.format(env_name))
+    plt.title('SAC on {}'.format(env_name))
     plt.show()
 
 if __name__ == "__main__":

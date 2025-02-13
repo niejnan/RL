@@ -57,7 +57,8 @@ class DDPG:
         dones = torch.tensor(transition_dict['dones'], dtype=torch.float).view(-1, 1)
 
         next_q = self.target_critic(next_states, self.target_actor(next_states))
-
+        
+        # 在这里乘上 gamma, 这是因为算的是 Q(s,a)
         q_target = rewards + self.gamma * next_q * (1 - dones)
 
         critic_loss = torch.mean(self.mse_loss(self.critic(states, actions), q_target))
