@@ -4,7 +4,7 @@ import torch
 class PolicyNet(nn.Module):
 
     def __init__(self, state_dim, hidden_dim, action_dim, action_bound):
-        super(PolicyNet).__init__()
+        super(PolicyNet, self).__init__()
 
         self.fc1 = nn.Linear(state_dim, hidden_dim)
 

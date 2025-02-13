@@ -176,34 +176,34 @@ TD 目标本身就是 $r_t+\gamma V(s_{t+1})$，
 
 类比与监督学习，在 **Actor-Critic** 里：
 
-- **Critic 负责估计** $V(s)$ ，但它的更新目标是 **TD Target**（即 $r_t + \gamma V(s_{t+1})$ ，等价于 $Q(s, a) $）。
+- Critic 负责估计 $V(s)$ ，但它的更新目标是 TD Target（即 $r_t + \gamma V(s_{t+1})$ ，等价于 $Q(s, a) $）。
 
-- 这个 **TD Target 作为“监督信号”**，类似于监督学习中的 **ground truth**，Critic 通过均方误差最小化它。
-- 也就是说，Critic **用 TD Target 作为监督信号** 来让 $V(s)$ 逼近 $Q(s, a)$ 。
+- 这个 TD Target 作为“监督信号”，类似于监督学习中的 ground truth，Critic 通过均方误差最小化它。
+- 也就是说，Critic 用 TD Target 作为监督信号 来让 $V(s)$ 逼近 $Q(s, a)$ 。
 
 $$
 L = \frac{1}{2} (V_{\theta}(s_t) - TD\ Target)^2 = \frac{1}{2} (V_{\theta}(s_t) - Q(s_t, a_t))^2
 $$
 
-这表明，**Critic 其实是在用 TD 误差来优化** $V(s)$ **，让它逐步接近** $Q(s, a)$ 。
+这表明，Critic 其实是在用 TD 误差来优化 $V(s)$ ，让它逐步接近 $Q(s, a)$ 。
 
 
 
 **Actor 和 Critic 的相互作用**
 
-- **Critic 估计** $V(s) $，帮助 Actor 评估策略的好坏。
+- Critic 估计 $V(s) $，帮助 Actor 评估策略的好坏。
 
-- **Actor 通过 TD 误差（优势估计）来优化策略**，选择更好的动作，使得长期收益最大化。
+- Actor 通过 TD 误差（优势估计）来优化策略，选择更好的动作，使得长期收益最大化。
 
-- **当 Actor 变得更好时，Critic 也会有更好的 TD Target，从而让 Critic 估计的** $V(s)$ **更接近**$ Q(s, a) $。
+- 当 Actor 变得更好时，Critic 也会有更好的 TD Target，从而让 Critic 估计的 $V(s)$ 更接近$ Q(s, a) $。
 
 
 
 - 一开始，Critic 估计 $V(s)$ 可能不准确，因此 $Q(s, a)$ 和 $V(s)$ 可能差距较大。
 
-- 但随着 Actor 选择更好的动作（即 **最大化** $Q(s, a$) ）， $Q(s, a)$ 也会随着策略的改进而变化。
+- 但随着 Actor 选择更好的动作（即 最大化 $Q(s, a$) ）， $Q(s, a)$ 也会随着策略的改进而变化。
 
-- 当训练趋于稳定，**最优策略下，每个状态的动作都接近最优，导致** $Q(s, a)$ **和** $V(s)$ **差距变小**，最终趋向于：
+- 当训练趋于稳定，最优策略下，每个状态的动作都接近最优，导致 $Q(s, a)$ 和 $V(s)$ 差距变小，最终趋向于：
 
 $$
 Q(s, a) \approx V(s) \quad \text{（在最优策略下）}

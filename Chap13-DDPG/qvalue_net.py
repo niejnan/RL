@@ -5,7 +5,7 @@ class QValueNet(nn.Module):
 
     def __init__(self, state_dim, hidden_dim, action_dim):
 
-        super(QValueNet).__init__()
+        super(QValueNet, self).__init__()
 
         self.state_dim = state_dim
         self.hidden_dim = hidden_dim
