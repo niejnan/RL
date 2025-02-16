@@ -12,4 +12,4 @@ class PolicyNetContinuous(torch.nn.Module):
         x = F.relu(self.fc1(x))
         mu = 2.0 * torch.tanh(self.fc_mu(x))
         std = F.softplus(self.fc_std(x))
-        return mu, std  # 高斯分布的均值和标准差
+        return mu, std 
